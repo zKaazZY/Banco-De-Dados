@@ -1,0 +1,70 @@
+import pandas as pd
+import geopandas as gpd
+import folium
+from shapely.geometry import Point
+from folium.plugins import PolyLineTextPath
+
+# Carregar os dados dos voos do Aeroporto SBPA
+df = pd.read_csv("sbpa_flights.csv")
+
+# Converter a coluna 'time' para datetime
+df["time"] = pd.to_datetime(df["time"])
+
+# Análises básicas
+num_voos = df["id_icao"].nunique()
+dias_registrados = df["time"].dt.date.unique()
+horario_mais_movimento = df["time"].dt.hour.value_counts().idxmax()
+altitude_media = df["alt"].mean()
+velocidade_media = df["speed"].mean()
+
+# Exibir os resultados
+print("Número de voos registrados:", num_voos)
+print("Dias com registros de voos:", dias_registrados)
+print("Horário de maior movimento:", horario_mais_movimento, "h")
+print("Altitude média dos voos:", round(altitude_media, 2), "pés")
+print("Velocidade média dos voos:", round(velocidade_media, 2), "nós")
+
+# Criar um mapa interativo
+lat_centro = df["lat"].mean()
+lon_centro = df["long"].mean()
+mapa = folium.Map(location=[lat_centro, lon_centro], zoom_start=10)
+
+# Adicionar marcadores para os voos
+for _, row in df.iterrows():
+    folium.Marker(
+        location=[row["lat"], row["long"]],
+        popup=f"Voo: {row['id_icao']}\nAltitude: {row['alt']} pés\nVelocidade: {row['speed']} nós",
+        icon=folium.Icon(color="blue", icon="plane")
+    ).add_to(mapa)
+
+# Exibir o mapa
+mapa.save("sbpa_flights_map.html")
+print("Mapa salvo como sbpa_flights_map.html")
+
+# Carregar os dados das trajetórias
+file_path = "/mnt/data/trajetorias_filtradas.csv"
+df_traj = pd.read_csv(file_path)
+
+# Filtrar apenas trajetórias que chegam ou saem de SBGL
+df_sbgl = df_traj[(df_traj['plan_arr'] == 'SBGL') | (df_traj['plan_dep'] == 'SBGL')]
+
+# Criar um mapa centralizado no SBGL
+sbgl_coords = (-22.809999, -43.250556)
+mapa_sbgl = folium.Map(location=sbgl_coords, zoom_start=8)
+
+# Agrupar por trajetória (identificada pelo indicat)
+for indicat, trajeto in df_sbgl.groupby('indicat'):
+    coordenadas = list(zip(trajeto['lat'], trajeto['lon']))
+    
+    # Adicionar linha representando a trajetória
+    folium.PolyLine(coordenadas, color='blue', weight=2.5, opacity=0.7).add_to(mapa_sbgl)
+    
+    # Adicionar marcadores no início e no fim
+    if not trajeto.empty:
+        folium.Marker(coordenadas[0], popup=f"Início {indicat}", icon=folium.Icon(color='green')).add_to(mapa_sbgl)
+        folium.Marker(coordenadas[-1], popup=f"Fim {indicat}", icon=folium.Icon(color='red')).add_to(mapa_sbgl)
+
+# Salvar o mapa em um arquivo HTML
+mapa_sbgl.save("mapa_interativo_sbgl.html")
+
+print("Mapa gerado e salvo como 'mapa_interativo_sbgl.html'")
